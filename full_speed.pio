@@ -1,0 +1,30 @@
+
+
+.program full_speed
+
+.wrap_target
+    set pins, 1 ; set pio's pins to high, we assign only one pin to the pio program thus there's only one pin enabled ?
+    set pins, 0 ; set pio's pins to low
+.wrap
+
+% c-sdk {
+    static inline void full_speed_program_init(PIO pio, uint sm, uint offset, uint pin) {
+        pio_sm_config c = full_speed_program_get_default_config(offset);
+
+        // set state machine's OUT pin (could set more than 1 pin with the last
+        // parameter), `pin` is the first GPIO pin 
+        sm_config_set_set_pins(&c, pin, 1);
+
+        // connect PIO to the GPIO pin
+        pio_gpio_init(pio, pin);
+
+        // set pin direction to output
+        pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, true);
+
+        // load configuration, then jump to the start of the PIO program
+        pio_sm_init(pio, sm, offset, &c);
+
+        // run the state machine / PIO program (?)
+        pio_sm_set_enabled(pio, sm, true);
+    }
+%}
