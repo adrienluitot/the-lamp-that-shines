@@ -1,0 +1,1 @@
+add_library(libs dmx_lib.c)

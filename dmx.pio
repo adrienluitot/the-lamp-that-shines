@@ -1,0 +1,87 @@
+.program dmx
+
+
+; 1. Break (front descendant) [> 88 ns / 2 trames / > 11 bits]
+; 2. Mark After Break (front montant) [> 8 ns / > 2 bits]
+; 3. Start bit (front descendant) [4ns / 1 bit]
+; 4. 8 data bits [8 * 4ns = 32ns]
+; 5. Stop bits [2 * 4ns / 2 bits]
+; 6. (optionnel) Mark Time Before Slot  OU Mark Before Break  (0 à 1s)
+; 7. SOIT start bit [4ns / 1 bit] -> go to {4}
+;    SOIT Break [> 88 ns / 2 trames / > 11 bits] -> go to {2}
+
+init:
+    wait 0 pin 0  ; {1} Début du Break (falling edge)
+    wait 1 pin 0  ; {2} passage au Mark After Break (rising edge)
+    irq 0  ; Set a interrupt, to know that the DMX has started / Maybe should be
+           ; placed under ??
+wait_sb:
+    wait 0 pin 0  ; {3} Start bit, front descendant (falling edge)
+    set x, 7 [10]  ; set the var for the loop to 7 for the 8 bits. Delay of 10
+                   ; to have 12 ticks (with wait? and set) so that we then read
+                   ; in the middle of the bit, so we sure we read the good value 
+
+; {4} read 8 bits
+slot_loop:
+    in pins, 1  ; read 1 bit
+    jmp x-- slot_loop [6]  ; loop upon 8 bits are received, else next slot
+    jmp pin end_slot [7]  ; {5} Stop BIT 1 cycle (high level) | there are 2 stop
+                          ; bits (-> should wait 8 more ticks ?)
+
+    ; didn't jump to end_slot -> line's still low -> there was a problem OR it's
+    ; the end of the communication. Anyway, no need to send save the data
+    irq 4 rel  ; Set a sticky flag | not sure what for ? to handle it in code ?
+    wait 1 pin 0  ; wait for line to return to idle state (high)
+    jmp wait_sb  ; Don't push data if we didn't see good framing | kay, but why
+               ; don't that keep the old/wrong data ?
+
+end_slot:
+    push ; push data, to use it in the C part
+    jmp wait_sb ; wait for next start bit
+    
+
+% c-sdk {
+    // code theft from the official PIO examples (uart_rx) on Github
+    #include "hardware/clocks.h"
+
+    static inline void dmx_program_init(PIO pio, uint sm, uint offset, uint pin) {
+        // for the `sm` of `pio`, set direction to input (`false`) for `1` pin
+        // as from `pin`
+        pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, false);
+        // connect PIO to the GPIO pin
+        pio_gpio_init(pio, pin);
+        // enable pull up on the pin
+        // pio_gpio_pullup(pin); // Really useful ? the ADM already pulls up
+
+        pio_sm_config c = dmx_program_get_default_config(offset);
+
+        // set state machine's IN, WAIT and JMP pin
+        sm_config_set_in_pins(&c, pin);
+        sm_config_set_jmp_pin(&c, pin);
+        
+        // Shift to right, disable autopush
+        sm_config_set_in_shift(&c, true, false, 32);
+    
+        // Deeper FIFO because we don't use the TX part
+        sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
+
+        // The state machine transmits 1 bits per 8 cycles
+        // We want 1 tick every 4μs, so at 250000 Hz (times 8 for the cycles)
+        float clockDiv = (float)clock_get_hz(clk_sys) / (8 * 250000);
+        sm_config_set_clkdiv(&c, clockDiv);
+
+        // load configuration, then jump to the start of the PIO program
+        pio_sm_init(pio, sm, offset, &c);
+
+        // run the state machine / PIO program (?)
+        pio_sm_set_enabled(pio, sm, true);
+    }
+
+    static inline unsigned char dmx_program_get_slot(PIO pio, uint sm) {
+        // 8-bit read from the uppermost byte of the FIFO, as data is left-justified
+        io_rw_8 *rxfifo_shift = (io_rw_8*)&pio->rxf[sm] + 3;
+        while (pio_sm_is_rx_fifo_empty(pio, sm))
+            tight_loop_contents();
+        return (unsigned char)*rxfifo_shift;
+    }
+%}
