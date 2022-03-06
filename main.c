@@ -5,9 +5,8 @@
 #define DMX_STATE_LED_PIN   7
 
 #define SFB_DURATION        88 // Space For Break duration - 88μs
-#define DISCO_DURATION      1500000 // max MARKs duration - 1.5s
+#define DISCO_DURATION      1000000 // max MARKs duration - 1s
 
-enum DMX_State dmxCurrentState = DMX_DISCONNECTED;
 
 int main () {
     stdio_init_all();
@@ -24,28 +23,42 @@ int main () {
     // The LED is inverted: a 1 disables the led, a 0 enables the led 
     gpio_put(DMX_STATE_LED_PIN, 1);
     
-    uint sm = dmx_init(pio0, DMX_RECEIVE_PIN);
+    uint sm = dmx_init(pio0, DMX_RECEIVE_PIN, 6);
+
+    int16_t channelNumber;
+    uint8_t channelValue;
+
+    enum DMX_State dmxCurrentState = DMX_DISCONNECTED;
+    enum DMX_State dmxLastState = DMX_DISCONNECTED;
 
     while(1) {
         dmxCurrentState = dmxStateMachine(dmxCurrentState);
-        if(dmxCurrentState == DMX_DISCONNECTED) {
-            gpio_put(DMX_STATE_LED_PIN, 1); // disconnected -> disable the led
+         // when disconnected -> disable the led (1 => disabled)
+        gpio_put(DMX_STATE_LED_PIN, (dmxCurrentState == DMX_DISCONNECTED));
+
+        if(dmxCurrentState != dmxLastState) {
+            printf("[Debug] DMX State changed: %d (old one: %d)\n", dmxCurrentState, dmxLastState);
+            if(dmxCurrentState == DMX_DISCONNECTED) {
+                dmx_reset_slot_index();
+            }
+        }
+        dmxLastState = dmxCurrentState;
+
+        if(!pio_sm_is_rx_fifo_empty(pio0, sm)) {
+            uint fifoLevel = pio_sm_get_rx_fifo_level(pio0, sm);
+            dmx_get_slot(&channelNumber, &channelValue);
+            printf("[Debug] {%d} Slot [%u]: %u\n", dmxCurrentState, channelNumber, channelValue);
         } else {
-            gpio_put(DMX_STATE_LED_PIN, 0);// not disconnected -> enable the led
+            // printf("State: %d\n",dmxStateMachine(dmxCurrentState));
+            sleep_ms(50);
         }
 
-        gpio_put(LED_PIN, gpio_get(DMX_RECEIVE_PIN));
-
-        printf("[Debug] Wait for slot\n");
-        uint8_t currentChannelValue = dmx_program_get_slot(pio0, sm);
-        printf("[Debug] ==> slot value: %u\n", currentChannelValue);
-        printf("[Debug] Slot received\n");
     }
 }
 
 
 enum DMX_State dmxStateMachine(enum DMX_State currentState) {
-    enum DMX_State nextState;
+    enum DMX_State nextState = currentState;
 
     switch (currentState)
     {
@@ -84,9 +97,19 @@ enum DMX_State dmxStateMachine(enum DMX_State currentState) {
 
 bool dmxStateMachineStarting(void) {
     bool isStarting = 0;
+
+    // TODO: fix this part, doesn't work properly (aka doesn't work at all xD)
+
     if(!gpio_get(DMX_RECEIVE_PIN)) { // check if line's low
-        if(time_us_64() - dmx_get_time_line_changed(0) >= SFB_DURATION) {
+        // printf("[DBG1] time : %lld\n", (time_us_64() - dmx_get_time_line_changed(0)));
+        if((time_us_64() - dmx_get_time_line_changed(0)) >= SFB_DURATION) {
             // SFB Detected
+            isStarting = 1;
+        }
+    } else if(!dmxStateMachineDisconnect()) {
+        // printf("[DBG2] time : %lld\n", (dmx_get_time_line_changed(1) - dmx_get_time_line_changed(0)));
+        if((dmx_get_time_line_changed(1) - dmx_get_time_line_changed(0)) >= SFB_DURATION){
+            // recently received SFB
             isStarting = 1;
         }
     }
@@ -95,13 +118,15 @@ bool dmxStateMachineStarting(void) {
 
 bool dmxStateMachineDisconnect(void) {
     bool hasDisconnected = 0;
+
     if(gpio_get(DMX_RECEIVE_PIN)) { // check if line's high
         if(dmx_get_time_line_changed(1) > dmx_get_time_line_changed(0)) {
-            if(time_us_64() - dmx_get_time_line_changed(1) > DISCO_DURATION){
+            if((time_us_64() - dmx_get_time_line_changed(1)) > DISCO_DURATION) {
                 hasDisconnected = 1;
             }
         }
     }
+
     return hasDisconnected;
 }
 

@@ -43,6 +43,7 @@ end_slot:
 % c-sdk {
     // code theft from the official PIO examples (uart_rx) on Github
     #include "hardware/clocks.h"
+    #include "hardware/irq.h"
 
     static inline void dmx_program_init(PIO pio, uint sm, uint offset, uint pin) {
         // for the `sm` of `pio`, set direction to input (`false`) for `1` pin
@@ -52,6 +53,9 @@ end_slot:
         pio_gpio_init(pio, pin);
         // enable pull up on the pin
         // pio_gpio_pullup(pin); // Really useful ? the ADM already pulls up
+
+        // enable the irq 0 on pio 0
+        irq_set_enabled(7, 1);
 
         pio_sm_config c = dmx_program_get_default_config(offset);
 
@@ -80,7 +84,7 @@ end_slot:
     static inline unsigned char dmx_program_get_slot(PIO pio, uint sm) {
         // 8-bit read from the uppermost byte of the FIFO, as data is left-justified
         io_rw_8 *rxfifo_shift = (io_rw_8*)&pio->rxf[sm] + 3;
-        while (pio_sm_is_rx_fifo_empty(pio, sm))
+        while (pio_sm_is_rx_fifo_empty(pio, sm))    
             tight_loop_contents();
         return (unsigned char)*rxfifo_shift;
     }

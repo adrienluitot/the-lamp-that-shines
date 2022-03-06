@@ -34,11 +34,12 @@ Description:
 Parameters:
     PIO pio - The pio that must be used for the program (pio0 or pio1)
     uint pin - The GPIO pin that will receive the DMX commands
+    uint16_t maxChannels - Set the max number of channel per packet
     
 Return:
     The SM number for the pio program or -1 if an error occurred
 **************************************************************************/
-int8_t dmx_init(PIO pio, uint pin);
+int8_t dmx_init(PIO pio, uint pin, uint16_t maxChannels);
 
 
 /**************************************************************************
@@ -50,20 +51,21 @@ Description:
     the slot's number and its value. 
     
 Parameters:
-    int16_t* channelNumber - Pointer for the var that will receive the slot's
+    uint16_t* channelNumber - Pointer for the var that will receive the slot's
     number / index
     uint8_t* channelValue - Pointer for the var that will receive the value of
     the current slot / channel
 
 Remark:
     This is a blocking function !
-    Channel `-1` is the Start Code
+    Channel `0` is the Start Code
     
 Return:
-    0 - no error
+    0 - no error, slot received
+    1 - no slot received (not really an error)
     else an error occurred (TODO: create error codes and describe them)
 **************************************************************************/
-int8_t dmx_get_slot(int16_t* channelNumber, uint8_t* channelValue);
+int8_t dmx_get_slot(uint16_t* channelNumber, uint8_t* channelValue);
 
 
 /**************************************************************************

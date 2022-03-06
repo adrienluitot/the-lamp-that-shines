@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "torrc": "ini",
+        "*.ctp": "php",
+        "dmx_lib.h": "c"
+    }
+}

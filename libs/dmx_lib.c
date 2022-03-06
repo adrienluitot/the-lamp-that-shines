@@ -2,8 +2,13 @@
 
 PIO pio;
 uint sm, dmxPin;
-uint64_t timeLinePastLow = 0, timeLinePastHigh = 0;
-uint16_t currentChannel = -1;
+uint64_t timeLinePastLow, timeLinePastHigh;
+uint16_t maxChannelCount, currentChannel;
+
+// TODO: it might be cleaner to use a struct for the config. And to pass this
+// config in each function. This would be neater, we would have only "one"
+// global var and this might allow multiple DMX port. Not really useful, but it
+// would make the library more generic
 
 
 /**************************************************************************
@@ -17,14 +22,20 @@ Description:
 Parameters:
     PIO pio - The pio that must be used for the program (pio0 or pio1)
     uint pin - The GPIO pin that will receive the DMX commands
+    uint16_t maxChannels - Set the max number of channel per packet
     
 Return:
     The SM number for the pio program or -1 if an error occurred
 **************************************************************************/
-int8_t dmx_init(PIO selectedPio, uint pin) {
+int8_t dmx_init(PIO selectedPio, uint pin, uint16_t maxChannels) {
     int8_t returnCode = -1; // By default we consider we'll have an error
 
+    timeLinePastLow = 0;
+    timeLinePastHigh = 0;
+    currentChannel = 0;
+
     dmxPin = pin;
+    maxChannelCount = maxChannels;
 
     gpio_init(dmxPin); // init GPIO pin
     gpio_set_dir(dmxPin, GPIO_IN); // set GPIO as an INPUT
@@ -66,23 +77,33 @@ Description:
     gives the slot's number and its value. 
     
 Parameters:
-    int16_t* channelNumber - Pointer for the var that will receive the
+    uint16_t* channelNumber - Pointer for the var that will receive the
     slot's number / index
     uint8_t* channelValue - Pointer for the var that will receive the value
     of the current slot / channel
 
 Parameters:
     This is a blocking function !
-    Channel `-1` is the Start Code
+    Channel `0` is the Start Code
     
 Return:
-    0 - no error
+    0 - no error, slot received
+    1 - no slot received (not really an error)
     else an error occurred (TODO: create error codes and describe them)
 **************************************************************************/
-int8_t dmx_get_slot(int16_t* channelNumber, uint8_t* channelValue) {
+int8_t dmx_get_slot(uint16_t* channelNumber, uint8_t* channelValue) {
     uint8_t currentChannelValue = dmx_program_get_slot(pio, sm);
-    printf("%d: %d\n", currentChannel, currentChannelValue);
-    currentChannel++;
+
+    *channelNumber = currentChannel;
+    *channelValue = currentChannelValue;
+
+    if(currentChannel >= maxChannelCount)
+        //currentChannel = 0;
+        dmx_reset_slot_index();
+    else
+        currentChannel++;
+
+    return 0;
 }
 
 
@@ -104,7 +125,7 @@ void dmx_reset_slot_index(void) {
     // this function should be called when a `Space for Break` is received, in
     // other words, when the pin is low for more than 88μs
 
-    currentChannel = -1;
+    currentChannel = 0;
 
     return;
 }
@@ -130,12 +151,16 @@ void dmx_pin_irq(uint gpio, uint32_t events) {
 
     // quick check if the interrupts was really triggered by the DMX pin
     if(gpio == dmxPin) {
-        if(events & GPIO_IRQ_EDGE_FALL > 0) {
+        printf("[Debug] %x\n", events);
+
+        if((events & GPIO_IRQ_EDGE_FALL) > 0) {
             // falling edge detected -> line's low
             timeLinePastLow = time_us_64();
-        } else if (events & GPIO_IRQ_EDGE_RISE > 0) {
+            gpio_acknowledge_irq(dmxPin, GPIO_IRQ_EDGE_FALL);
+        } else if ((events & GPIO_IRQ_EDGE_RISE) > 0) {
             // rising edge detected -> line's high
             timeLinePastHigh = time_us_64();
+            gpio_acknowledge_irq(dmxPin, GPIO_IRQ_EDGE_RISE);
         }
     }
 
