@@ -10,10 +10,12 @@
 ; 7. SOIT start bit [4ns / 1 bit] -> go to {4}
 ;    SOIT Break [> 88 ns / 2 trames / > 11 bits] -> go to {2}
 
+; TODO: Remove the init part, and directly start with wait_sb, break should be
+; handled if the jmp pin didn't jump (line's still low)
 init:
     wait 0 pin 0  ; {1} Début du Break (falling edge)
     wait 1 pin 0  ; {2} passage au Mark After Break (rising edge)
-    irq 0  ; Set a interrupt, to know that the DMX has started / Maybe should be
+    irq 0  ; Set an interrupt to know that the DMX has started / Maybe should be
            ; placed under ??
 wait_sb:
     wait 0 pin 0  ; {3} Start bit, front descendant (falling edge)
@@ -28,10 +30,10 @@ slot_loop:
     jmp pin end_slot [7]  ; {5} Stop BIT 1 cycle (high level) | there are 2 stop
                           ; bits (-> should wait 8 more ticks ?)
 
-    ; didn't jump to end_slot -> line's still low -> there was a problem OR it's
-    ; the end of the communication. Anyway, no need to send save the data
-    irq 4 rel  ; Set a sticky flag | not sure what for ? to handle it in code ?
-    wait 1 pin 0  ; wait for line to return to idle state (high)
+    ; didn't jump to end_slot -> line's still low -> certainly a "Space for
+    ; Break"
+    irq 4 rel  ; Set an interrupt to know DMX Break has been received (TODO: use IRQ 0)
+    wait 1 pin 0  ; wait for line to return to idle state (high) MAB
     jmp wait_sb  ; Don't push data if we didn't see good framing | kay, but why
                ; don't that keep the old/wrong data ?
 
@@ -54,7 +56,7 @@ end_slot:
         // enable pull up on the pin
         // pio_gpio_pullup(pin); // Really useful ? the ADM already pulls up
 
-        // enable the irq 0 on pio 0
+        // enable the irq 0 on pio 0 (PIO0_IRQ_0 is irq number 7)
         irq_set_enabled(7, 1);
 
         pio_sm_config c = dmx_program_get_default_config(offset);

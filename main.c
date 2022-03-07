@@ -32,17 +32,6 @@ int main () {
     enum DMX_State dmxLastState = DMX_DISCONNECTED;
 
     while(1) {
-        dmxCurrentState = dmxStateMachine(dmxCurrentState);
-         // when disconnected -> disable the led (1 => disabled)
-        gpio_put(DMX_STATE_LED_PIN, (dmxCurrentState == DMX_DISCONNECTED));
-
-        if(dmxCurrentState != dmxLastState) {
-            printf("[Debug] DMX State changed: %d (old one: %d)\n", dmxCurrentState, dmxLastState);
-            if(dmxCurrentState == DMX_DISCONNECTED) {
-                dmx_reset_slot_index();
-            }
-        }
-        dmxLastState = dmxCurrentState;
 
         if(!pio_sm_is_rx_fifo_empty(pio0, sm)) {
             uint fifoLevel = pio_sm_get_rx_fifo_level(pio0, sm);
@@ -53,6 +42,20 @@ int main () {
             sleep_ms(50);
         }
 
+        dmxCurrentState = dmxStateMachine(dmxCurrentState);
+         // when disconnected -> disable the led (1 => disabled)
+        gpio_put(DMX_STATE_LED_PIN, (dmxCurrentState == DMX_DISCONNECTED));
+
+        if(dmxCurrentState != dmxLastState) {
+            // TODO: might handle the change to DMX_STARTED here, by checking if
+            // we received channel 0
+
+            // TODO: Should rather reset when we have "DMX_STARTING"
+            if(dmxCurrentState == DMX_DISCONNECTED) {
+                dmx_reset_slot_index();
+            }
+        }
+        dmxLastState = dmxCurrentState;
     }
 }
 
@@ -99,6 +102,7 @@ bool dmxStateMachineStarting(void) {
     bool isStarting = 0;
 
     // TODO: fix this part, doesn't work properly (aka doesn't work at all xD)
+    // Use the IRQ 0 that detects Space for Break 
 
     if(!gpio_get(DMX_RECEIVE_PIN)) { // check if line's low
         // printf("[DBG1] time : %lld\n", (time_us_64() - dmx_get_time_line_changed(0)));
@@ -132,6 +136,10 @@ bool dmxStateMachineDisconnect(void) {
 
 bool dmxStateMachineStarted(void) {
     bool hasStarted = 0;
+
+    // TODO: should probably using a different method, like detecting Start code
+    // (which is slot 0)
+
      // check if the interrupt has been triggered in the PIO program
     if(irq_is_enabled(7)) {
         hasStarted = 1;
