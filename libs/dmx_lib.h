@@ -8,6 +8,10 @@
 #include "hardware/pio.h"
 
 
+#define SFB_DURATION        88 // Space For Break duration - 88μs
+#define DISCO_DURATION      1000000 // max MARKs duration - 1s
+
+
 /**************************************************************************
 Description:
     These are the states for the non blocking state machine in the main function
@@ -19,7 +23,7 @@ Description:
     
 **************************************************************************/
 enum DMX_State {
-    DMX_DISCONNECTED=0, DMX_STARTS=1, DMX_STARTED=2
+    DMX_DISCONNECTED=1, DMX_STARTED=2
 };
 
 
@@ -119,6 +123,40 @@ Return:
     Time in μs from the boot
 **************************************************************************/
 uint64_t dmx_get_time_line_changed(bool toHigh);
+
+
+/**************************************************************************
+Function:
+    enum DMX_State dmxStateMachine(enum DMX_State currentState)
+
+Description:
+    This function is used to manage the DMX without blocking the main loop (we 
+    try to be as near as possible to a RT system)
+    
+Parameters:
+    enum DMX_State currentState - The current state, so we can manage the next
+    state based on the current one
+
+Return:
+    The new state
+**************************************************************************/
+enum DMX_State dmxStateMachine(enum DMX_State currentState);
+
+
+/**************************************************************************
+Function:
+    bool dmxStateMachineDisconnect(void)
+
+Description:
+    This function checks if the DMX next state is Disconnected
+    
+Parameters:
+    None
+    
+Return:
+    True (1) if next state is Disconnected, false (0) otherwise
+**************************************************************************/
+bool dmxStateMachineDisconnect(void);
 
 
 #endif

@@ -61,6 +61,7 @@ int8_t dmx_init(PIO selectedPio, uint pin, uint16_t maxChannels) {
             GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL,
             true,
             &dmx_pin_irq);
+
     }
     
 
@@ -151,7 +152,8 @@ void dmx_pin_irq(uint gpio, uint32_t events) {
 
     // quick check if the interrupts was really triggered by the DMX pin
     if(gpio == dmxPin) {
-        printf("[Debug] %x\n", events);
+        // printf("[Debug] %x\n", events);
+        // TODO: fix event "c" (falling and rising edge at the same time)
 
         if((events & GPIO_IRQ_EDGE_FALL) > 0) {
             // falling edge detected -> line's low
@@ -161,6 +163,11 @@ void dmx_pin_irq(uint gpio, uint32_t events) {
             // rising edge detected -> line's high
             timeLinePastHigh = time_us_64();
             gpio_acknowledge_irq(dmxPin, GPIO_IRQ_EDGE_RISE);
+
+            if((timeLinePastHigh - timeLinePastLow) > SFB_DURATION) {
+                printf("\n[Debug] DMX Starts\n");
+                dmx_reset_slot_index();
+            }
         }
     }
 
@@ -193,3 +200,76 @@ uint64_t dmx_get_time_line_changed(bool toHigh) {
 
     return returnTime;
 }
+
+
+/**************************************************************************
+Function:
+    enum DMX_State dmxStateMachine(enum DMX_State currentState)
+
+Description:
+    This function is used to manage the DMX without blocking the main loop (we 
+    try to be as near as possible to a RT system)
+    
+Parameters:
+    enum DMX_State currentState - The current state, so we can manage the next
+    state based on the current one
+
+Return:
+    The new state
+**************************************************************************/
+enum DMX_State dmxStateMachine(enum DMX_State currentState) {
+    enum DMX_State nextState = currentState;
+
+    switch (currentState)
+    {
+        case DMX_DISCONNECTED:
+            break;
+    
+        case DMX_STARTED:
+            if(dmxStateMachineDisconnect()) {
+                nextState = DMX_DISCONNECTED;
+                printf("[Debug] DMX Disconnected\n");
+            }
+            break;
+
+        default:
+            break;
+    }
+
+    return nextState;
+}
+
+
+/**************************************************************************
+Function:
+    bool dmxStateMachineDisconnect(void)
+
+Description:
+    This function checks if the DMX next state is Disconnected
+    
+Parameters:
+    None
+    
+Return:
+    True (1) if next state is Disconnected, false (0) otherwise
+**************************************************************************/
+bool dmxStateMachineDisconnect(void) {
+    bool hasDisconnected = 0;
+
+    // TODO: at disconnection might receive some odd slots like 0 and/or 255,
+    // maybe it's possbile to fix this
+
+    if(gpio_get(dmxPin)) { // check if line's high
+        uint64_t now = time_us_64();
+        uint64_t timeHigh = dmx_get_time_line_changed(1);
+
+        if(now > timeHigh) {
+            if((now - timeHigh) > (uint64_t) DISCO_DURATION) {
+                hasDisconnected = 1;
+            }
+        }
+    }
+
+    return hasDisconnected;
+}
+
