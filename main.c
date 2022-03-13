@@ -6,13 +6,15 @@
 
 
 int main () {
+    /** Init Part **/
     stdio_init_all();
+    //printf("[Debug] The program just started!\n");
+    init_pins();
 
-    printf("[Debug] The program just started!\n");
+    /** DMX Part **/
+    struct dmx_component DMX0;
 
-    init_pins(void);
-    
-    uint sm = dmx_init(pio0, DMX_RECEIVE_PIN, 6);
+    uint8_t errorDmxInit = dmx_init(DMX0, pio0, DMX_RECEIVE_PIN, 6);
 
     int16_t channelNumber;
     uint8_t channelValue;
@@ -22,8 +24,8 @@ int main () {
 
     while(1) {
 
-        if(!pio_sm_is_rx_fifo_empty(pio0, sm)) {
-            dmx_get_slot(&channelNumber, &channelValue);
+        if(!pio_sm_is_rx_fifo_empty(DMX0.pio, DMX0.sm)) {
+            dmx_get_slot(DMX0, &channelNumber, &channelValue);
 
             printf("[Debug] Slot [%u]: %u\n", channelNumber, channelValue);
             if(channelNumber == 0) {
@@ -34,7 +36,7 @@ int main () {
 
         // TODO: save the packet/slots in a table to use them for real ^^ 
 
-        dmxCurrentState = dmxStateMachine(dmxCurrentState);
+        dmxCurrentState = dmxStateMachine(DMX0, dmxCurrentState);
         // when disconnected -> disable the led (1 => disabled)
         gpio_put(DMX_STATE_LED_PIN, (dmxCurrentState == DMX_DISCONNECTED));
         dmxLastState = dmxCurrentState;
