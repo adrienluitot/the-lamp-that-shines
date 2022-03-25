@@ -1,1 +1,1 @@
-add_library(libs dmx_lib.c)
+add_library(libs dmx_lib.c utils.c)

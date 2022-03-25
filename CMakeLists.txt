@@ -18,7 +18,7 @@ add_executable(main
 pico_generate_pio_header(libs ${CMAKE_CURRENT_LIST_DIR}/dmx.pio)
 
 # pull in common dependencies
-target_link_libraries(main libs pico_stdlib hardware_pio)
+target_link_libraries(main libs pico_stdlib hardware_pio hardware_pwm)
 target_link_libraries(libs pico_stdlib hardware_pio)
 
 # enable usb output, disable uart output
