@@ -1,9 +1,11 @@
 #include "pico/stdlib.h"
 #include "hardware/irq.h"
 #include "hardware/pwm.h"
+#include "hardware/adc.h"
 #include <stdio.h>
 #include "libs/dmx_lib.h"
 #include "libs/utils.h"
+#include "libs/temp_lib.h"
 
 enum DMX_Mode {
     MODE_1=1, MODE_2=2, MODE_3=3, MODE_4=4

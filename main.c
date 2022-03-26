@@ -1,8 +1,13 @@
 #include "main.h"
 
-#define LED_PIN             21//PICO_DEFAULT_LED_PIN
+#define DEBUG_LED_PIN       PICO_DEFAULT_LED_PIN
+#define LM335_PIN           28
+#define LED_PIN             21
+#define FAN_ENABLE_PIN      20
 #define DMX_RECEIVE_PIN     9
 #define DMX_STATE_LED_PIN   7
+
+#define TEMP_MEASURE_DELAY  1000000 // 1s
 
 struct dmx_component DMX0;
 
@@ -19,11 +24,17 @@ int main () {
     enum DMX_State dmxCurrentState = DMX_DISCONNECTED;
     enum DMX_State dmxLastState = DMX_DISCONNECTED;
 
+    struct temp_config tempConfig;
+    float heatSinkTemperature;
 
     /** Init Part **/
     stdio_init_all();
+    adc_init(); // analogue digital converter
     //printf("[Debug] The program just started!\n");
     init_pins();
+
+    temp_init(&tempConfig, LM335_PIN, TEMP_MEASURE_DELAY, 33.0f, 45.0f);
+    heatSinkTemperature = temp_update_temperature(&tempConfig);
 
 
     /** DMX Part **/
@@ -37,12 +48,23 @@ int main () {
                                        &gpio_irq_dmx);
 
     while(1) {
+        heatSinkTemperature = temp_update_temperature(&tempConfig);
+        temp_update_machine_state(&tempConfig);
+
+        if(tempConfig.temperatureState == TEMP_FAN) {
+            gpio_put(FAN_ENABLE_PIN, 1);
+        } else if(tempConfig.temperatureState == TEMP_SWITCH_OFF) {
+            gpio_put(FAN_ENABLE_PIN, 1);
+            // TODO : Switch off LED
+        } else if(tempConfig.temperatureState == TEMP_COLD) {
+            gpio_put(FAN_ENABLE_PIN, 0);
+        }
+
         if(!dmx_get_slot(&DMX0, &channelNumber, &channelValue)) {
             if(channelNumber != 0) {
                 dmxSlots[channelNumber-1] = channelValue;
             }
         }
-        
         
         if(packetReceived && channelNumber == 0) {
             dmxCurrentState = DMX_STARTED;
@@ -83,6 +105,9 @@ int main () {
 void init_pins(void) {
     gpio_init(LED_PIN); // enables the pin for the LED
     gpio_set_dir(LED_PIN, GPIO_OUT); // set to OUTPUT
+
+    gpio_init(FAN_ENABLE_PIN);
+    gpio_set_dir(FAN_ENABLE_PIN, GPIO_OUT);
 
     //TODO: TMP
     gpio_set_function(LED_PIN, GPIO_FUNC_PWM);

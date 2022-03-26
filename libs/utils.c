@@ -76,3 +76,30 @@ void utils_reset_table(uint8_t* table, uint16_t size) {
     
     return;
 }
+
+
+/**************************************************************************
+Function:
+    bool utils_delay_us(uint64_t* counter, uint32_t delay)
+
+Description:
+    This function will copy a first table into an other one
+    
+Parameters:
+    uint64_t* counter - The counter that holds the timing
+    uint32_t delay - The delay in μs
+    
+Return:
+    True if the delay has past, false otherwise
+**************************************************************************/
+bool utils_delay_us(uint64_t* counter, uint32_t delay) {
+    bool delayPassed = false;
+    uint64_t cycle =  time_us_64() / delay;
+
+    if (cycle > *counter) {
+        *counter = cycle;
+        delayPassed = 1;
+    }
+
+    return delayPassed;
+}
